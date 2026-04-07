@@ -1,0 +1,24 @@
+version: "3.8"
+
+services:
+  proxmark-postgres:
+    image: postgres:16
+    container_name: proxmark-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: proxmark
+      POSTGRES_USER: proxmark
+      POSTGRES_PASSWORD: troque_essa_senha_forte
+      TZ: America/Sao_Paulo
+    ports:
+      - "5432:5432"
+    volumes:
+      - proxmark_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U proxmark -d proxmark"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  proxmark_postgres_data:

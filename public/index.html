@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Proxmark Web Console</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; background: #0f1117; color: #f3f3f3; }
+    h1 { margin-top: 0; }
+    .row { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+    input, button { padding: 10px; border-radius: 8px; border: 1px solid #444; background: #1b1e28; color: #f3f3f3; }
+    input { width: 520px; max-width: 100%; }
+    button { cursor: pointer; }
+    .ok { color: #73d67a; }
+    .warn { color: #ffd166; }
+    .err { color: #ff6b6b; }
+    #log { background: #090b10; border: 1px solid #444; padding: 12px; border-radius: 8px; height: 360px; overflow: auto; white-space: pre-wrap; }
+    .hint { opacity: .85; margin-top: 8px; }
+    .panel { background:#090b10;border:1px solid #444;padding:12px;border-radius:8px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { border-bottom: 1px solid #2d3242; padding: 8px; text-align: left; vertical-align: top; }
+    th { position: sticky; top: 0; background: #111523; }
+    .mono { font-family: Menlo, Monaco, Consolas, monospace; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h1>Proxmark Web Console</h1>
+  <p>Execute comandos em background e acompanhe logs em tempo real.</p>
+
+  <div class="row">
+    <input id="command" value="/Users/anakin/Documents/Anakin/ProxmarkWebConsole/proxmark3/client/proxmark3 /dev/tty.usbmodem401 -c &quot;hw version&quot;" />
+    <button id="startBtn">Iniciar comando</button>
+    <button id="stopBtn">Parar comando</button>
+  </div>
+
+  <div class="row">
+    <input id="porta" value="/dev/tty.usbmodem401" />
+    <button id="listPortsBtn">Listar portas</button>
+    <button id="clearLogBtn">Limpar log (visual)</button>
+  </div>
+
+  <div class="row">
+    <button class="preset" data-action="connect">Conectar</button>
+    <button class="preset" data-action="hw_version">HW Version</button>
+    <button class="preset" data-action="hf_search">HF Search</button>
+    <button class="preset" data-action="lf_search">LF Search</button>
+    <button class="preset" data-action="hf_14a_reader">Ler UID (hf 14a reader)</button>
+    <button class="preset" data-action="status">HW Status</button>
+  </div>
+
+  <div class="row">
+    <button id="saveReadBtn">Salvar ultima leitura no PostgreSQL</button>
+    <button id="refreshTagsBtn">Atualizar historico</button>
+    <button id="showLastBtn">Mostrar detalhes da ultima leitura</button>
+  </div>
+
+  <p>Status: <span id="status" class="warn">carregando...</span> | Banco: <span id="dbStatus" class="warn">nao verificado</span></p>
+  <div id="log"></div>
+  <h3>Historico de tags (somente leitura/inventario)</h3>
+  <div class="panel" style="max-height:280px;overflow:auto">
+    <table>
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Data</th>
+          <th>Frequencia</th>
+          <th>UID</th>
+          <th>Comando</th>
+        </tr>
+      </thead>
+      <tbody id="tagsBody"></tbody>
+    </table>
+  </div>
+  <h3>Ultima leitura (detalhes)</h3>
+  <div id="lastRead" class="panel mono">sem dados ainda</div>
+  <p class="hint">Dica: os botões usam o cliente oficial já instalado localmente e a porta configurada acima.</p>
+
+  <script>
+    const statusEl = document.getElementById('status');
+    const logEl = document.getElementById('log');
+    const tagsBodyEl = document.getElementById('tagsBody');
+    const lastReadEl = document.getElementById('lastRead');
+    const dbStatusEl = document.getElementById('dbStatus');
+    const cmdEl = document.getElementById('command');
+    const portaEl = document.getElementById('porta');
+    const pm3Bin = '/Users/anakin/Documents/Anakin/ProxmarkWebConsole/proxmark3/client/proxmark3';
+
+    function addLog(line) {
+      logEl.textContent += (logEl.textContent ? "\n" : "") + line;
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function buildPm3Cmd(innerCommand) {
+      const porta = portaEl.value.trim() || '/dev/tty.usbmodem401';
+      return `${pm3Bin} ${porta} -c "${innerCommand}"`;
+    }
+
+    async function refreshStatus() {
+      const r = await fetch('/api/status');
+      const data = await r.json();
+      statusEl.textContent = data.running ? 'rodando' : 'parado';
+      statusEl.className = data.running ? 'ok' : 'warn';
+    }
+
+    async function refreshTags() {
+      const r = await fetch('/api/tags?limit=30');
+      const data = await r.json();
+      if (data.error) {
+        dbStatusEl.textContent = 'erro';
+        dbStatusEl.className = 'err';
+        tagsBodyEl.innerHTML = `<tr><td colspan="5">erro ao carregar historico: ${data.error}</td></tr>`;
+        return;
+      }
+      dbStatusEl.textContent = 'conectado';
+      dbStatusEl.className = 'ok';
+      if (!data.rows || data.rows.length === 0) {
+        tagsBodyEl.innerHTML = '<tr><td colspan="5">nenhuma leitura salva ainda</td></tr>';
+        return;
+      }
+      tagsBodyEl.innerHTML = data.rows.map(row => `
+        <tr>
+          <td>${row.id}</td>
+          <td>${row.created_at}</td>
+          <td>${row.frequency}</td>
+          <td class="mono">${row.uid || '-'}</td>
+          <td class="mono">${row.source_command}</td>
+        </tr>
+      `).join('');
+    }
+
+    async function loadLogs() {
+      const r = await fetch('/api/logs');
+      const data = await r.json();
+      logEl.textContent = data.lines.join('\n');
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    async function startCommand(command) {
+      const body = new URLSearchParams({ command });
+      const r = await fetch('/api/start', { method: 'POST', body });
+      const data = await r.json();
+      if (data.error) addLog(`[erro] ${data.error}`);
+      await refreshStatus();
+    }
+
+    async function stopCommand() {
+      await fetch('/api/stop', { method: 'POST' });
+      await refreshStatus();
+    }
+
+    document.getElementById('startBtn').onclick = () => startCommand(cmdEl.value.trim());
+    document.getElementById('stopBtn').onclick = () => stopCommand();
+
+    document.getElementById('listPortsBtn').onclick = () => {
+      const cmd = 'ls /dev/tty.*';
+      cmdEl.value = cmd;
+      startCommand(cmd);
+    };
+
+    document.getElementById('clearLogBtn').onclick = () => {
+      logEl.textContent = '';
+    };
+
+    document.getElementById('saveReadBtn').onclick = async () => {
+      const r = await fetch('/api/save-last-read', { method: 'POST' });
+      const data = await r.json();
+      if (data.error) {
+        addLog(`[erro postgres] ${data.error}`);
+        dbStatusEl.textContent = 'erro ao salvar';
+        dbStatusEl.className = 'err';
+        return;
+      }
+      addLog(`[postgres] leitura salva id=${data.saved.id} freq=${data.frequency} uid=${data.uid || '-'}`);
+      dbStatusEl.textContent = `salvo id=${data.saved.id}`;
+      dbStatusEl.className = 'ok';
+      refreshTags();
+    };
+
+    document.getElementById('refreshTagsBtn').onclick = refreshTags;
+    document.getElementById('showLastBtn').onclick = async () => {
+      const r = await fetch('/api/logs');
+      const data = await r.json();
+      const lines = data.lines || [];
+      const preview = lines.slice(-60).join('\n');
+      lastReadEl.textContent = preview || 'sem dados ainda';
+    };
+
+    document.querySelectorAll('.preset').forEach(btn => {
+      btn.onclick = () => {
+        const action = btn.dataset.action;
+        let cmd = '';
+        if (action === 'connect') cmd = buildPm3Cmd('help');
+        if (action === 'hw_version') cmd = buildPm3Cmd('hw version');
+        if (action === 'hf_search') cmd = buildPm3Cmd('hf search');
+        if (action === 'lf_search') cmd = buildPm3Cmd('lf search');
+        if (action === 'hf_14a_reader') cmd = buildPm3Cmd('hf 14a reader');
+        if (action === 'status') cmd = buildPm3Cmd('hw status');
+        if (!cmd) return;
+        cmdEl.value = cmd;
+        startCommand(cmd);
+      };
+    });
+
+    const events = new EventSource('/api/stream');
+    events.onmessage = (ev) => addLog(ev.data);
+
+    loadLogs().then(() => {
+      refreshStatus();
+      refreshTags();
+    });
+  </script>
+</body>
+</html>
