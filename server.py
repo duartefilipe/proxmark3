@@ -65,7 +65,7 @@ class CommandManager:
         with self.proc_lock:
             return self.proc is not None and self.proc.poll() is None
 
-    def start(self, command):
+    def start(self, command, silent=False):
         with self.proc_lock:
             if self.proc is not None and self.proc.poll() is None:
                 raise RuntimeError("Ja existe um comando em execucao.")
@@ -73,8 +73,11 @@ class CommandManager:
             with self.last_run_lock:
                 self.last_command = command
                 self.last_run_lines = []
+            
+            self.silent = silent
 
-            self._publish(f"$ {command}")
+            if not self.silent:
+                self._publish(f"$ {command}")
             self.proc = subprocess.Popen(
                 command,
                 shell=True,
@@ -98,14 +101,16 @@ class CommandManager:
 
         for line in proc.stdout:
             clean = line.rstrip("\n")
-            self._publish(clean)
+            if not getattr(self, "silent", False):
+                self._publish(clean)
             with self.last_run_lock:
                 self.last_run_lines.append(clean)
                 if len(self.last_run_lines) > 2000:
                     self.last_run_lines = self.last_run_lines[-2000:]
 
         exit_code = proc.wait()
-        self._publish(f"[processo finalizado] exit_code={exit_code}")
+        if not getattr(self, "silent", False):
+            self._publish(f"[processo finalizado] exit_code={exit_code}")
         with self.last_run_lock:
             self.last_run_lines.append(f"[processo finalizado] exit_code={exit_code}")
 
@@ -128,10 +133,10 @@ class TagStore:
     def __init__(self):
         self.cfg = {
             "host": os.getenv("PM3_PGHOST", "192.168.31.229"),
-            "port": int(os.getenv("PM3_PGPORT", "5432")),
+            "port": int(os.getenv("PM3_PGPORT", "5433")),
             "dbname": os.getenv("PM3_PGDATABASE", "proxmark"),
             "user": os.getenv("PM3_PGUSER", "proxmark"),
-            "password": os.getenv("PM3_PGPASSWORD", "proxmark123"),
+            "password": os.getenv("PM3_PGPASSWORD", "troque_essa_senha_forte"),
         }
         self._setup_done = False
         self._setup_lock = threading.Lock()
@@ -165,6 +170,29 @@ class TagStore:
                         );
                         """
                     )
+                    cur.execute("ALTER TABLE tag_reads ADD COLUMN IF NOT EXISTS nome TEXT;")
+                    cur.execute(
+                        """
+                        CREATE TABLE IF NOT EXISTS comandos_uteis (
+                            id SERIAL PRIMARY KEY,
+                            nome VARCHAR(100),
+                            comando TEXT,
+                            descricao TEXT
+                        );
+                        """
+                    )
+                    cur.execute("SELECT COUNT(*) FROM comandos_uteis;")
+                    count = cur.fetchone()[0]
+                    if count == 0:
+                        cur.execute(
+                            """
+                            INSERT INTO comandos_uteis (nome, comando, descricao) VALUES
+                            ('Leitura LF', 'lf search', 'Detecta tags de 125 kHz'),
+                            ('Clone Casa Atual', 'lf em 410x clone --id 1A0091F2E4', 'Clona a tag da casa atual'),
+                            ('Clone Casa Antiga', 'lf em 410x clone --id 007218C7F8', 'Clona a tag da casa antiga'),
+                            ('Verificar clone', 'lf em 410x read', 'Lê e mostra o ID da tag no leitor');
+                            """
+                        )
             self._setup_done = True
 
     def save_read(self, frequency, uid, source_command, raw_output):
@@ -188,7 +216,7 @@ class TagStore:
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    SELECT id, frequency, uid, source_command, created_at
+                    SELECT id, frequency, uid, source_command, created_at, nome, raw_output
                     FROM tag_reads
                     ORDER BY id DESC
                     LIMIT %s;
@@ -203,6 +231,48 @@ class TagStore:
                 "uid": r[2] or "",
                 "source_command": r[3],
                 "created_at": r[4].isoformat(),
+                "nome": r[5] or "",
+                "raw_output": r[6] or "",
+            }
+            for r in rows
+        ]
+
+    def update_tag_nome(self, tag_id, nome):
+        self.ensure_setup()
+        with self._conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "UPDATE tag_reads SET nome = %s WHERE id = %s",
+                    (nome, tag_id)
+                )
+
+    def delete_tag(self, tag_id):
+        self.ensure_setup()
+        with self._conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "DELETE FROM tag_reads WHERE id = %s",
+                    (tag_id,)
+                )
+
+    def list_comandos(self):
+        self.ensure_setup()
+        with self._conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    SELECT id, nome, comando, descricao
+                    FROM comandos_uteis
+                    ORDER BY id ASC;
+                    """
+                )
+                rows = cur.fetchall()
+        return [
+            {
+                "id": r[0],
+                "nome": r[1],
+                "comando": r[2],
+                "descricao": r[3],
             }
             for r in rows
         ]
@@ -223,6 +293,8 @@ def infer_uid(lines):
         r"\bUID[:\s]+([0-9A-Fa-f ]{4,})",
         r"\bCard UID[:\s]+([0-9A-Fa-f ]{4,})",
         r"\bcsn[:\s]+([0-9A-Fa-f ]{4,})",
+        r"\bID[:\s]+([0-9A-Fa-f ]{4,})",
+        r"EM.*?ID[-\s:]*([0-9A-Fa-f]+)",
     ]
     text = "\n".join(lines)
     for p in patterns:
@@ -246,12 +318,22 @@ class Handler(BaseHTTPRequestHandler):
         if parsed.path == "/api/logs":
             return self._json({"lines": manager.snapshot_logs()})
 
+        if parsed.path == "/api/last-run":
+            return self._json(manager.get_last_run())
+
         if parsed.path == "/api/tags":
             try:
                 query = parse_qs(parsed.query or "")
                 limit = int(query.get("limit", ["50"])[0])
                 limit = max(1, min(limit, 200))
                 rows = store.list_reads(limit=limit)
+                return self._json({"rows": rows})
+            except Exception as e:
+                return self._json({"error": str(e)}, status=500)
+
+        if parsed.path == "/api/comandos":
+            try:
+                rows = store.list_comandos()
                 return self._json({"rows": rows})
             except Exception as e:
                 return self._json({"error": str(e)}, status=500)
@@ -269,10 +351,11 @@ class Handler(BaseHTTPRequestHandler):
 
         if parsed.path == "/api/start":
             command = body.get("command", [""])[0].strip()
+            silent = body.get("silent", ["false"])[0].lower() == "true"
             if not command:
                 return self._json({"error": "command vazio"}, status=400)
             try:
-                manager.start(command)
+                manager.start(command, silent=silent)
                 return self._json({"ok": True})
             except RuntimeError as e:
                 return self._json({"error": str(e)}, status=409)
@@ -299,6 +382,23 @@ class Handler(BaseHTTPRequestHandler):
                     raw_output=raw_output,
                 )
                 return self._json({"ok": True, "saved": saved, "frequency": frequency, "uid": uid})
+            except Exception as e:
+                return self._json({"error": str(e)}, status=500)
+
+        if parsed.path == "/api/tags/update":
+            tag_id = body.get("id", [""])[0]
+            nome = body.get("nome", [""])[0]
+            try:
+                store.update_tag_nome(int(tag_id), nome)
+                return self._json({"ok": True})
+            except Exception as e:
+                return self._json({"error": str(e)}, status=500)
+
+        if parsed.path == "/api/tags/delete":
+            tag_id = body.get("id", [""])[0]
+            try:
+                store.delete_tag(int(tag_id))
+                return self._json({"ok": True})
             except Exception as e:
                 return self._json({"error": str(e)}, status=500)
 

@@ -4,128 +4,502 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Proxmark Web Console</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    body { font-family: Arial, sans-serif; margin: 24px; background: #0f1117; color: #f3f3f3; }
-    h1 { margin-top: 0; }
-    .row { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
-    input, button { padding: 10px; border-radius: 8px; border: 1px solid #444; background: #1b1e28; color: #f3f3f3; }
-    input { width: 520px; max-width: 100%; }
-    button { cursor: pointer; }
-    .ok { color: #73d67a; }
-    .warn { color: #ffd166; }
-    .err { color: #ff6b6b; }
-    #log { background: #090b10; border: 1px solid #444; padding: 12px; border-radius: 8px; height: 360px; overflow: auto; white-space: pre-wrap; }
-    .hint { opacity: .85; margin-top: 8px; }
-    .panel { background:#090b10;border:1px solid #444;padding:12px;border-radius:8px; }
-    table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    th, td { border-bottom: 1px solid #2d3242; padding: 8px; text-align: left; vertical-align: top; }
-    th { position: sticky; top: 0; background: #111523; }
-    .mono { font-family: Menlo, Monaco, Consolas, monospace; font-size: 12px; }
+    :root {
+      --bg: #09090b;
+      --surface: #18181b;
+      --surface-hover: #27272a;
+      --border: #27272a;
+      --text: #fafafa;
+      --text-muted: #a1a1aa;
+      --primary: #3b82f6;
+      --primary-hover: #2563eb;
+      --success: #22c55e;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --glass: rgba(24, 24, 27, 0.7);
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: var(--bg);
+      color: var(--text);
+      margin: 0;
+      padding: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      background: var(--glass);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+      padding: 1rem 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    header h1 {
+      margin: 0;
+      font-size: 1.25rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    .status-indicator {
+      display: inline-block;
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: var(--danger);
+    }
+    .status-indicator.online { background: var(--success); }
+    .status-indicator.scanning { background: var(--warning); animation: pulse 1.5s infinite; }
+    
+    @keyframes pulse {
+      0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7); }
+      70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(245, 158, 11, 0); }
+      100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+    }
+
+    main {
+      flex: 1;
+      padding: 2rem;
+      max-width: 1200px;
+      margin: 0 auto;
+      width: 100%;
+      display: grid;
+      grid-template-rows: auto 1fr;
+      gap: 2rem;
+    }
+
+    .tabs {
+      display: flex;
+      gap: 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .tab-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-muted);
+      padding: 0.75rem 1.5rem;
+      font-size: 1rem;
+      font-weight: 500;
+      cursor: pointer;
+      position: relative;
+      transition: color 0.2s;
+    }
+    .tab-btn:hover { color: var(--text); }
+    .tab-btn.active { color: var(--text); }
+    .tab-btn.active::after {
+      content: '';
+      position: absolute;
+      bottom: -1px; left: 0; right: 0;
+      height: 2px;
+      background: var(--primary);
+      border-radius: 2px 2px 0 0;
+    }
+
+    .tab-content { display: none; }
+    .tab-content.active { display: block; animation: fadeIn 0.3s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1.5rem;
+      box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);
+      margin-bottom: 1.5rem;
+    }
+
+    input, select {
+      font-family: inherit;
+      font-size: 0.9rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      padding: 0.6rem 1rem;
+      outline: none;
+      transition: all 0.2s;
+    }
+    input:focus { border-color: var(--primary); }
+
+    button {
+      font-family: inherit;
+      font-size: 0.9rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--surface-hover);
+      color: var(--text);
+      padding: 0.6rem 1rem;
+      cursor: pointer;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+    button:hover { background: var(--border); }
+    button.btn-primary { background: var(--primary); border-color: var(--primary); color: white; }
+    button.btn-primary:hover { background: var(--primary-hover); }
+    button.btn-danger { background: var(--danger); border-color: var(--danger); color: white; }
+    button.btn-danger:hover { background: #b91c1c; }
+
+    .row { display: flex; gap: 0.75rem; margin-bottom: 1.5rem; flex-wrap: wrap; align-items: center; }
+    h3 { margin-top: 0; margin-bottom: 1rem; font-weight: 500; color: var(--text); }
+    
+    .terminal {
+      background: #000;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1rem;
+      height: 400px;
+      overflow-y: auto;
+      font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+      font-size: 0.85rem;
+      line-height: 1.4;
+      color: #a1a1aa;
+      white-space: pre-wrap;
+    }
+
+    table { width: 100%; border-collapse: collapse; text-align: left; font-size: 0.9rem;}
+    th, td { padding: 1rem; border-bottom: 1px solid var(--border); }
+    th { color: var(--text-muted); font-weight: 500; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(255,255,255,0.02); }
+
+    .badge {
+      padding: 0.25rem 0.5rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      background: var(--surface-hover);
+      color: var(--text-muted);
+    }
+    .badge.hf { background: rgba(59, 130, 246, 0.1); color: #60a5fa; }
+    .badge.lf { background: rgba(34, 197, 94, 0.1); color: #4ade80; }
+
+    .radar-container {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 3rem 1rem; text-align: center;
+    }
+    .radar-circle {
+      width: 120px; height: 120px;
+      border-radius: 50%;
+      border: 2px dashed var(--border);
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: 1.5rem;
+      position: relative;
+    }
+    .radar-circle.scanning {
+      border: 2px solid var(--primary);
+      animation: spin 3s linear infinite;
+    }
+    .radar-circle.scanning::after {
+      content: ''; position: absolute;
+      top: 50%; left: 50%;
+      width: 50%; height: 2px;
+      background: linear-gradient(90deg, transparent, var(--primary));
+      transform-origin: 0% 0%;
+      animation: scan 2s linear infinite;
+    }
+    @keyframes spin { 100% { transform: rotate(360deg); } }
+    @keyframes scan { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    
+    .found-card {
+      display: none;
+      margin-top: 2rem;
+      padding: 2rem;
+      border: 1px solid var(--success);
+      border-radius: 12px;
+      background: rgba(34, 197, 94, 0.05);
+      text-align: center;
+      animation: fadeIn 0.5s ease;
+    }
+    .mono { font-family: 'Menlo', 'Monaco', monospace; }
   </style>
 </head>
 <body>
-  <h1>Proxmark Web Console</h1>
-  <p>Execute comandos em background e acompanhe logs em tempo real.</p>
+  <header>
+    <h1>
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-primary"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+      Proxmark Console
+    </h1>
+    <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem;">
+      <span class="status-indicator" id="mainStatus"></span>
+      <span id="mainStatusText">Estado do Servidor...</span>
+      <span style="color:var(--border)">|</span>
+      <span id="dbStatusText" style="color:var(--text-muted)">Banco de Dados</span>
+    </div>
+  </header>
 
-  <div class="row">
-    <input id="command" value="/Users/anakin/Documents/Anakin/ProxmarkWebConsole/proxmark3/client/proxmark3 /dev/tty.usbmodem401 -c &quot;hw version&quot;" />
-    <button id="startBtn">Iniciar comando</button>
-    <button id="stopBtn">Parar comando</button>
-  </div>
+  <main>
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="auto-scan">Leitura Automática</button>
+      <button class="tab-btn" data-tab="tags">Tags Armazenadas</button>
+      <button class="tab-btn" data-tab="manual">LF / HF Manual</button>
+      <button class="tab-btn" data-tab="config">Conexão & Terminal</button>
+    </div>
 
-  <div class="row">
-    <input id="porta" value="/dev/tty.usbmodem401" />
-    <button id="listPortsBtn">Listar portas</button>
-    <button id="clearLogBtn">Limpar log (visual)</button>
-  </div>
+    <!-- TAB: AUTO-SCAN -->
+    <div id="auto-scan" class="tab-content active">
+      <div class="card radar-container">
+        <div id="radarCircle" class="radar-circle">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+        </div>
+        <h3 id="radarStatus">Pronto para iniciar leitura</h3>
+        <p style="color:var(--text-muted); max-width: 400px; margin-bottom: 2rem;">
+          Encoste a tag no aparelho. O Proxmark ficará alternando entre 125kHz e 13.56MHz até encontrar algo.
+        </p>
+        <button id="radarBtn" class="btn-primary" style="padding: 1rem 2rem; font-size: 1.1rem; border-radius: 50px;">
+          Iniciar Leitura Automática
+        </button>
 
-  <div class="row">
-    <button class="preset" data-action="connect">Conectar</button>
-    <button class="preset" data-action="hw_version">HW Version</button>
-    <button class="preset" data-action="hf_search">HF Search</button>
-    <button class="preset" data-action="lf_search">LF Search</button>
-    <button class="preset" data-action="hf_14a_reader">Ler UID (hf 14a reader)</button>
-    <button class="preset" data-action="status">HW Status</button>
-  </div>
+        <div id="foundCard" class="found-card">
+          <h3 style="color: var(--success); margin-bottom: 0.5rem;">🎉 Tag Identificada!</h3>
+          <p>Frequência: <strong id="foundFreq" class="badge">--</strong></p>
+          <p>UID: <strong id="foundUid" class="mono">--</strong></p>
+          <p style="color: var(--text-muted); font-size: 0.9rem; margin-top: 1rem;">O registro foi salvo com sucesso em tags armazenadas.</p>
+        </div>
+      </div>
+    </div>
 
-  <div class="row">
-    <button id="saveReadBtn">Salvar ultima leitura no PostgreSQL</button>
-    <button id="refreshTagsBtn">Atualizar historico</button>
-    <button id="showLastBtn">Mostrar detalhes da ultima leitura</button>
-  </div>
+    <!-- TAB: TAGS ARMAZENADAS -->
+    <div id="tags" class="tab-content">
+      <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+          <h3>Histórico de Leitura</h3>
+          <button id="refreshTagsBtn">Atualizar Tabela</button>
+        </div>
+        <div style="overflow-x: auto;">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Data</th>
+                <th>Nome</th>
+                <th>Frequência</th>
+                <th>UID</th>
+                <th>Ações</th>
+              </tr>
+            </thead>
+            <tbody id="tagsBody">
+              <tr><td colspan="5" style="text-align: center; color: var(--text-muted);">Carregando...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
 
-  <p>Status: <span id="status" class="warn">carregando...</span> | Banco: <span id="dbStatus" class="warn">nao verificado</span></p>
-  <div id="log"></div>
-  <h3>Historico de tags (somente leitura/inventario)</h3>
-  <div class="panel" style="max-height:280px;overflow:auto">
-    <table>
-      <thead>
-        <tr>
-          <th>ID</th>
-          <th>Data</th>
-          <th>Frequencia</th>
-          <th>UID</th>
-          <th>Comando</th>
-        </tr>
-      </thead>
-      <tbody id="tagsBody"></tbody>
-    </table>
-  </div>
-  <h3>Ultima leitura (detalhes)</h3>
-  <div id="lastRead" class="panel mono">sem dados ainda</div>
-  <p class="hint">Dica: os botões usam o cliente oficial já instalado localmente e a porta configurada acima.</p>
+    <!-- TAB: MANUAL -->
+    <div id="manual" class="tab-content">
+      <div class="card">
+        <h3>Menu Rápido</h3>
+        <p style="color: var(--text-muted); margin-bottom: 1.5rem;">Ações pré-configuradas para leitura manual enviadas direto ao terminal.</p>
+        <div class="row">
+          <button class="preset" data-action="hf_search">🔍 HF Search (13.56MHz)</button>
+          <button class="preset" data-action="lf_search">🔍 LF Search (125kHz)</button>
+          <button class="preset" data-action="hf_14a_reader">📖 Ler UID (HF 14a)</button>
+        </div>
+
+        <h3 style="margin-top: 2rem;">Comandos Rápidos (Do Banco de Dados)</h3>
+        <div class="row" id="comandosUteisRow">
+          <span style="color:var(--warning)">Carregando pacotes configurados...</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- TAB: CONFIG & TERMINAL -->
+    <div id="config" class="tab-content">
+      <div class="card" style="margin-bottom: 1rem;">
+        <h3>Configuração de Conexão</h3>
+        <div class="row">
+          <input id="porta" value="/dev/cu.usbmodem401" style="flex:1;" placeholder="/dev/tty..." />
+          <button class="preset" data-action="status">Verificar Hardware Status</button>
+          <button class="preset" data-action="hw_version">Versão do Firmware</button>
+        </div>
+      </div>
+      <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+          <h3>Terminal (Saída Bruta)</h3>
+          <div>
+            <button id="stopBtn" class="btn-danger" style="margin-right: 0.5rem;">Parar Processo / Forçar</button>
+            <button id="clearLogBtn">Limpar Log</button>
+          </div>
+        </div>
+        <div class="row">
+          <input id="command" style="flex:1" placeholder="Ex: lf search" />
+          <button id="startBtn" class="btn-primary">Enviar</button>
+        </div>
+        <div id="log" class="terminal"></div>
+        <div style="display: flex; justify-content: space-between; margin-top: 1rem;">
+          <button id="saveMBtn" style="font-size: 0.8rem">Salvar forçadamente última leitura</button>
+        </div>
+      </div>
+    </div>
+  </main>
 
   <script>
-    const statusEl = document.getElementById('status');
+    // CORE VARIABLES
+    const mainStatusEl = document.getElementById('mainStatus');
+    const mainStatusText = document.getElementById('mainStatusText');
+    const dbStatusText = document.getElementById('dbStatusText');
     const logEl = document.getElementById('log');
     const tagsBodyEl = document.getElementById('tagsBody');
-    const lastReadEl = document.getElementById('lastRead');
-    const dbStatusEl = document.getElementById('dbStatus');
     const cmdEl = document.getElementById('command');
     const portaEl = document.getElementById('porta');
     const pm3Bin = '/Users/anakin/Documents/Anakin/ProxmarkWebConsole/proxmark3/client/proxmark3';
 
+    // TAB LOGIC
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        btn.classList.add('active');
+        document.getElementById(btn.dataset.tab).classList.add('active');
+      });
+    });
+
+    // UI UPDATES
     function addLog(line) {
       logEl.textContent += (logEl.textContent ? "\n" : "") + line;
       logEl.scrollTop = logEl.scrollHeight;
     }
 
     function buildPm3Cmd(innerCommand) {
-      const porta = portaEl.value.trim() || '/dev/tty.usbmodem401';
+      const porta = portaEl.value.trim() || '/dev/cu.usbmodem401';
       return `${pm3Bin} ${porta} -c "${innerCommand}"`;
     }
 
     async function refreshStatus() {
-      const r = await fetch('/api/status');
-      const data = await r.json();
-      statusEl.textContent = data.running ? 'rodando' : 'parado';
-      statusEl.className = data.running ? 'ok' : 'warn';
+      try {
+        const r = await fetch('/api/status');
+        const data = await r.json();
+        const isRunning = data.running;
+        mainStatusEl.className = 'status-indicator ' + (isRunning ? 'scanning' : 'online');
+        mainStatusText.textContent = isRunning ? 'Executando comando...' : 'Proxmark Livre';
+        return isRunning;
+      } catch (e) {
+        mainStatusEl.className = 'status-indicator';
+        mainStatusText.textContent = 'Desconectado';
+        return false;
+      }
     }
 
     async function refreshTags() {
-      const r = await fetch('/api/tags?limit=30');
-      const data = await r.json();
-      if (data.error) {
-        dbStatusEl.textContent = 'erro';
-        dbStatusEl.className = 'err';
-        tagsBodyEl.innerHTML = `<tr><td colspan="5">erro ao carregar historico: ${data.error}</td></tr>`;
-        return;
+      try {
+        const r = await fetch('/api/tags?limit=50');
+        const data = await r.json();
+        if (data.error) throw new Error(data.error);
+
+        dbStatusText.textContent = 'Banco Conectado';
+        dbStatusText.style.color = 'var(--success)';
+
+        if (!data.rows || data.rows.length === 0) {
+          tagsBodyEl.innerHTML = '<tr><td colspan="5" style="text-align:center; color:var(--text-muted)">Nenhuma tag salva</td></tr>';
+          return;
+        }
+
+        window.tagLogs = {};
+        tagsBodyEl.innerHTML = data.rows.map(row => {
+          let badgeClass = row.frequency.toLowerCase().includes('hf') ? 'hf' : 'lf';
+          let nomeDisplay = row.nome ? row.nome : '<span style="color:var(--text-muted)">- Sem nome -</span>';
+          window.tagLogs[row.id] = row.raw_output;
+          return `
+          <tr>
+            <td style="color: var(--text-muted)">#${row.id}</td>
+            <td>${new Date(row.created_at).toLocaleString()}</td>
+            <td>
+              <span style="display:flex; align-items:center; gap:6px;">
+                <span>${nomeDisplay}</span>
+                <button onclick="editarNome(${row.id})" style="background:transparent; border:none; cursor:pointer;" title="Editar nome">✏️</button>
+              </span>
+            </td>
+            <td><span class="badge ${badgeClass}">${row.frequency}</span></td>
+            <td class="mono" style="font-weight: 500">${row.uid || 'N/A'}</td>
+            <td style="display:flex; gap: 4px;">
+              <button style="background: #64748b; color: white; border: none; font-size: 0.8rem; padding: 0.4rem 0.8rem; border-radius: 4px; cursor: pointer;" onclick="verDetalhes(${row.id})">📄 Log</button>
+              <button class="btn-primary" style="font-size: 0.8rem; padding: 0.4rem 0.8rem" onclick="clonarTag('${row.uid}', '${row.frequency}')">🎯 Clonar</button>
+              <button style="background: #ef4444; color: white; border: none; font-size: 0.8rem; padding: 0.4rem 0.8rem; border-radius: 4px; cursor: pointer;" onclick="deletarTag(${row.id})">🗑️ Excluir</button>
+            </td>
+          </tr>
+          `;
+        }).join('');
+      } catch (e) {
+        dbStatusText.textContent = 'Erro DB';
+        dbStatusText.style.color = 'var(--danger)';
       }
-      dbStatusEl.textContent = 'conectado';
-      dbStatusEl.className = 'ok';
-      if (!data.rows || data.rows.length === 0) {
-        tagsBodyEl.innerHTML = '<tr><td colspan="5">nenhuma leitura salva ainda</td></tr>';
-        return;
+    }
+
+    window.verDetalhes = function(id) {
+      if (window.tagLogs && window.tagLogs[id]) {
+        alert("--- SAÍDA BRUTA DO PROXMARK ---\n\n" + window.tagLogs[id].replace(/\\n/g, '\n'));
       }
-      tagsBodyEl.innerHTML = data.rows.map(row => `
-        <tr>
-          <td>${row.id}</td>
-          <td>${row.created_at}</td>
-          <td>${row.frequency}</td>
-          <td class="mono">${row.uid || '-'}</td>
-          <td class="mono">${row.source_command}</td>
-        </tr>
-      `).join('');
+    };
+
+    window.clonarTag = function(uid, freq) {
+      if (!uid || uid === 'N/A') return alert("Não é possível clonar: UID desconhecido.");
+      
+      // Mudar para tab config para ver o log
+      document.querySelector('[data-tab="config"]').click();
+      
+      let cmd = '';
+      if(freq.toLowerCase().includes('hf')) {
+        // Usa csetuid como padrão para HF MIFARE Classic
+        cmd = buildPm3Cmd(`hf mf csetuid --uid ${uid.replace(/\s/g,'')}`);
+      } else {
+        // Usa clone 410x para LF
+        cmd = buildPm3Cmd(`lf em 410x clone --id ${uid.replace(/\s/g,'')}`);
+      }
+      
+      cmdEl.value = cmd;
+      startSilentAndFilter(cmd);
+    };
+
+    window.editarNome = async (id) => {
+      let msg = prompt("Digite o nome ou apelido da tag:");
+      if (msg !== null) {
+         try {
+           const body = new URLSearchParams({ id: id.toString(), nome: msg });
+           await fetch('/api/tags/update', { method: 'POST', body });
+           refreshTags();
+         } catch(e) {}
+      }
+    };
+
+    window.deletarTag = async (id) => {
+      if(confirm("Tem certeza que deseja excluir permanentemente esta tag do histórico?")) {
+         try {
+           const body = new URLSearchParams({ id: id.toString() });
+           await fetch('/api/tags/delete', { method: 'POST', body });
+           refreshTags();
+         } catch(e) {}
+      }
+    };
+
+    async function refreshComandosUteis() {
+      try {
+        const r = await fetch('/api/comandos');
+        const data = await r.json();
+        const container = document.getElementById('comandosUteisRow');
+        if (!data.rows || data.rows.length === 0) return;
+        
+        container.innerHTML = data.rows.map(row => `
+          <button class="cmd-db" data-cmd="${row.comando}" title="${row.descricao}">${row.nome}</button>
+        `).join('');
+
+        document.querySelectorAll('.cmd-db').forEach(btn => {
+          btn.onclick = () => {
+            const fullCmd = buildPm3Cmd(btn.dataset.cmd);
+            document.querySelector('[data-tab="config"]').click();
+            cmdEl.value = fullCmd;
+            startSilentAndFilter(fullCmd);
+          };
+        });
+      } catch (e) {}
     }
 
     async function loadLogs() {
@@ -135,12 +509,61 @@
       logEl.scrollTop = logEl.scrollHeight;
     }
 
-    async function startCommand(command) {
-      const body = new URLSearchParams({ command });
+    // COMMAND EXCUTION
+    async function startCommand(command, silent=false) {
+      const body = new URLSearchParams({ command, silent: silent.toString() });
       const r = await fetch('/api/start', { method: 'POST', body });
       const data = await r.json();
-      if (data.error) addLog(`[erro] ${data.error}`);
+      if (data.error && !silent) addLog(`[erro] ${data.error}`);
       await refreshStatus();
+    }
+
+    async function startSilentAndFilter(cmd) {
+      addLog(`\n--- Executando: ${cmd} ---`);
+      await startCommand(cmd, true);
+      
+      // Aguardar o processo de fato terminar antes de inspecionar os logs
+      let running = true;
+      while (running) {
+        await new Promise(r => setTimeout(r, 600));
+        running = await refreshStatus();
+      }
+      
+      const r = await fetch('/api/last-run');
+      const data = await r.json();
+      
+      const spamPatterns = [
+        '[=] Session log', '[+] loaded', 'execute command from commandline:',
+        'Using UART port', 'Communicating with PM3', 'No previous history',
+        'pm3 -->', 'Searching for', '[processo finalizado]', '\\[/\\]', '\\[\\\\\\]', '\\[-\\]', '\\[|\\]'
+      ];
+      
+      const filtered = data.lines.filter(l => {
+         const txt = l.trim();
+         
+         // Remove linhas vazias ou apenas spinners (ex: [/], [|], [\], [-])
+         if (!txt || /^\[[\\/\|\-]\]$/.test(txt)) return false;
+         
+         // Remove a mensagem de erro original da ferramenta para mantermos nossa interface limpa
+         if (txt.includes('No known/supported')) return false;
+         
+         for (let p of spamPatterns) {
+            if (l.includes(p)) return false;
+         }
+         return true;
+      });
+      
+      if (filtered.length === 0) {
+         addLog('  ❌ Nenhuma tag encontrada ou nenhum dado retornado.');
+      } else {
+         addLog(filtered.join('\n'));
+         
+         // Inspecionar o texto bruto para ver se tem indicativo claro de clonagem com sucesso
+         const joinedLog = filtered.join(' ').toLowerCase();
+         if (joinedLog.includes('( verified )') || joinedLog.includes('success') || joinedLog.includes('done')) {
+             addLog('\n✅ CLONAGEM GRAVADA COM SUCESSO!');
+         }
+      }
     }
 
     async function stopCommand() {
@@ -148,66 +571,133 @@
       await refreshStatus();
     }
 
+    // AUTO-SCAN LOGIC
+    let autoScanEnabled = false;
+    let autoScanPhase = 'hf';
+
+    async function runAutoScanTick() {
+      if (!autoScanEnabled) return;
+      document.getElementById('radarStatus').textContent = `Procurando na frequência ${autoScanPhase.toUpperCase()}...`;
+      
+      const cmd = buildPm3Cmd(`${autoScanPhase} search`);
+      await startCommand(cmd, true); // Silencioso
+
+      // Esperar comando finalizar silenciosamente
+      let running = true;
+      while (running && autoScanEnabled) {
+          await new Promise(r => setTimeout(r, 600));
+          running = await refreshStatus();
+      }
+
+      if (!autoScanEnabled) return;
+
+      // Comando finalizou. Checar last-run inves do log global.
+      const runResp = await fetch('/api/last-run');
+      const runData = await runResp.json();
+      const txt = runData.lines.join('\n').toLowerCase();
+
+      let achouTag = false;
+      if (autoScanPhase === 'hf') {
+        if (txt.includes('valid iso') || txt.includes('uid:') || txt.includes('found ndef')) achouTag = true;
+      } else {
+        if ((txt.includes('valid') && txt.includes('id found')) || txt.includes('uid:') || txt.includes('cotag')) achouTag = true;
+      }
+
+      if (achouTag) {
+        // Parar o radar e salvar no banco
+        toggleAutoScan(true); // forçar parada
+        document.getElementById('radarStatus').textContent = "Identificando...";
+
+        // Extrair texto pra jogar no log
+        const filteredLines = runData.lines.filter(l => !l.startsWith('[=] Session log') && !l.includes('No previous history') && !l.includes('Communicating with PM3') && !l.startsWith('[+] loaded') && l.trim() !== '');
+        addLog(`\n--- 🔍 TAG ENCONTRADA (${autoScanPhase.toUpperCase()}) ---`);
+        addLog(filteredLines.join('\n'));
+
+        try {
+          const r = await fetch('/api/save-last-read', { method: 'POST' });
+          const res = await r.json();
+          if (res.ok) {
+            document.getElementById('radarStatus').textContent = "Sucesso!";
+            const fc = document.getElementById('foundCard');
+            fc.style.display = 'block';
+            document.getElementById('foundFreq').textContent = res.frequency || autoScanPhase.toUpperCase();
+            document.getElementById('foundUid').textContent = res.uid || 'Desconhecido';
+            refreshTags();
+          } else {
+            document.getElementById('radarStatus').textContent = "Falha ao gravar no banco de dados.";
+          }
+        } catch (e) {
+          document.getElementById('radarStatus').textContent = "Erro na conexão API.";
+        }
+      } else {
+        // Tag nao achada, trocar a frequencia e continuar
+        autoScanPhase = autoScanPhase === 'hf' ? 'lf' : 'hf';
+        setTimeout(runAutoScanTick, 100);
+      }
+    }
+
+    function toggleAutoScan(forceStop = false) {
+      const btn = document.getElementById('radarBtn');
+      const circle = document.getElementById('radarCircle');
+      
+      if (autoScanEnabled || forceStop) {
+        autoScanEnabled = false;
+        btn.textContent = "Iniciar Leitura Automática";
+        btn.classList.remove('btn-danger');
+        circle.classList.remove('scanning');
+        if (!forceStop) document.getElementById('radarStatus').textContent = "Aguardando...";
+        stopCommand();
+      } else {
+        autoScanEnabled = true;
+        autoScanPhase = 'hf'; // sempre comecar no HF
+        btn.textContent = "Parar Auto-Scan";
+        btn.classList.add('btn-danger');
+        circle.classList.add('scanning');
+        document.getElementById('foundCard').style.display = 'none';
+        runAutoScanTick();
+      }
+    }
+
+    document.getElementById('radarBtn').addEventListener('click', () => toggleAutoScan(false));
+
+    // EVENT LISTENERS BÁSICOS
     document.getElementById('startBtn').onclick = () => startCommand(cmdEl.value.trim());
     document.getElementById('stopBtn').onclick = () => stopCommand();
+    document.getElementById('clearLogBtn').onclick = () => { logEl.textContent = ''; };
+    document.getElementById('refreshTagsBtn').onclick = refreshTags;
 
-    document.getElementById('listPortsBtn').onclick = () => {
-      const cmd = 'ls /dev/tty.*';
-      cmdEl.value = cmd;
-      startCommand(cmd);
-    };
-
-    document.getElementById('clearLogBtn').onclick = () => {
-      logEl.textContent = '';
-    };
-
-    document.getElementById('saveReadBtn').onclick = async () => {
+    document.getElementById('saveMBtn').onclick = async () => {
       const r = await fetch('/api/save-last-read', { method: 'POST' });
       const data = await r.json();
-      if (data.error) {
-        addLog(`[erro postgres] ${data.error}`);
-        dbStatusEl.textContent = 'erro ao salvar';
-        dbStatusEl.className = 'err';
-        return;
-      }
-      addLog(`[postgres] leitura salva id=${data.saved.id} freq=${data.frequency} uid=${data.uid || '-'}`);
-      dbStatusEl.textContent = `salvo id=${data.saved.id}`;
-      dbStatusEl.className = 'ok';
-      refreshTags();
-    };
-
-    document.getElementById('refreshTagsBtn').onclick = refreshTags;
-    document.getElementById('showLastBtn').onclick = async () => {
-      const r = await fetch('/api/logs');
-      const data = await r.json();
-      const lines = data.lines || [];
-      const preview = lines.slice(-60).join('\n');
-      lastReadEl.textContent = preview || 'sem dados ainda';
+      if(data.ok) { addLog(`[salvo db] ${data.uid || data.frequency}`); refreshTags(); }
+      else addLog(`[erro db] ${data.error}`);
     };
 
     document.querySelectorAll('.preset').forEach(btn => {
       btn.onclick = () => {
         const action = btn.dataset.action;
         let cmd = '';
-        if (action === 'connect') cmd = buildPm3Cmd('help');
+        if (action === 'status') cmd = buildPm3Cmd('hw status');
         if (action === 'hw_version') cmd = buildPm3Cmd('hw version');
         if (action === 'hf_search') cmd = buildPm3Cmd('hf search');
         if (action === 'lf_search') cmd = buildPm3Cmd('lf search');
         if (action === 'hf_14a_reader') cmd = buildPm3Cmd('hf 14a reader');
-        if (action === 'status') cmd = buildPm3Cmd('hw status');
         if (!cmd) return;
+        document.querySelector('[data-tab="config"]').click();
         cmdEl.value = cmd;
-        startCommand(cmd);
+        startSilentAndFilter(cmd);
       };
     });
 
+    // SSE PARA STREAM DE LOGS
     const events = new EventSource('/api/stream');
     events.onmessage = (ev) => addLog(ev.data);
 
-    loadLogs().then(() => {
-      refreshStatus();
-      refreshTags();
+    // INIT
+    Promise.all([loadLogs(), refreshTags(), refreshComandosUteis()]).then(() => {
+      setInterval(refreshStatus, 2000);
     });
+
   </script>
 </body>
 </html>

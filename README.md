@@ -75,3 +75,26 @@ No painel, use:
 - depois clique em `Salvar ultima leitura no PostgreSQL`
 - clique em `Atualizar historico` para listar as leituras salvas
 
+## Comandos úteis para leitura e clonagem (LF - 125 kHz)
+
+### Leitura de tags
+- `lf search` → Detecta automaticamente qualquer tag LF.
+- `lf em 410x read` → Leitura específica para tags EM410x.
+- `lf t55xx dump` → Lê toda a memória do chip T55xx.
+
+### Clonagem (tag original → tag virgem T5577)
+- `lf em 410x clone --id <ID>` → Clona uma tag EM410x.
+- Exemplo: `lf em 410x clone --id 1A0091F2E4`
+
+### Verificação da tag clonada
+- `lf em 410x read` → Confere se o ID foi gravado corretamente.
+
+## Central de Comandos
+
+| Comando | Para que serve |
+|---------|----------------|
+| `lf search` | Descobrir qualquer tag LF |
+| `lf em 410x read` | Ler tag EM410x |
+| `lf em 410x clone --id 1A0091F2E4` | Clonar tag da casa atual |
+| `lf em 410x clone --id 007218C7F8` | Clonar tag da casa antiga |
+| `lf em 410x read` | Verificar clonagem |
