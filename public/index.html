@@ -596,11 +596,20 @@
       const runData = await runResp.json();
       const txt = runData.lines.join('\n').toLowerCase();
 
+      // Checar se houve erro de conexão/hardware
+      if (txt.includes('error') || txt.includes('invalid serial port')) {
+        document.getElementById('radarStatus').textContent = "⚠️ Erro: Proxmark desconectado.";
+        toggleAutoScan(true);
+        addLog("\n[!] O radar parou porque o aparelho desconectou ou houve um erro de hardware.");
+        return;
+      }
+
       let achouTag = false;
       if (autoScanPhase === 'hf') {
         if (txt.includes('valid iso') || txt.includes('uid:') || txt.includes('found ndef')) achouTag = true;
       } else {
-        if ((txt.includes('valid') && txt.includes('id found')) || txt.includes('uid:') || txt.includes('cotag')) achouTag = true;
+        // Padrões LF: Valid, ID Found, ou simplesmente a presença de um ID hexadecimal (LF tags costumam ser simples)
+        if ((txt.includes('valid') && txt.includes('id found')) || txt.includes('uid:') || txt.includes('id:') || txt.includes('cotag')) achouTag = true;
       }
 
       if (achouTag) {
