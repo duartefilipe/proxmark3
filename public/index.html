@@ -317,7 +317,7 @@
       <div class="card" style="margin-bottom: 1rem;">
         <h3>Configuração de Conexão</h3>
         <div class="row">
-          <input id="porta" value="/dev/cu.usbmodem401" style="flex:1;" placeholder="/dev/tty..." />
+          <input id="porta" value="" style="flex:1;" placeholder="Auto (deixe vazio) ou /dev/tty.usbmodem301" />
           <button class="preset" data-action="status">Verificar Hardware Status</button>
           <button class="preset" data-action="hw_version">Versão do Firmware</button>
         </div>
@@ -351,7 +351,7 @@
     const tagsBodyEl = document.getElementById('tagsBody');
     const cmdEl = document.getElementById('command');
     const portaEl = document.getElementById('porta');
-    const pm3Bin = '/Users/anakin/Documents/Anakin/ProxmarkWebConsole/proxmark3/client/proxmark3';
+    const pm3Bin = '/Users/anakin/Documents/Anakin/ProxmarkWebConsole/proxmark3/pm3';
 
     // TAB LOGIC
     document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -370,8 +370,9 @@
     }
 
     function buildPm3Cmd(innerCommand) {
-      const porta = portaEl.value.trim() || '/dev/cu.usbmodem401';
-      return `${pm3Bin} ${porta} -c "${innerCommand}"`;
+      const porta = portaEl.value.trim();
+      if (porta) return `${pm3Bin} -p ${porta} -c "${innerCommand}"`;
+      return `${pm3Bin} -c "${innerCommand}"`;
     }
 
     async function refreshStatus() {
@@ -379,12 +380,21 @@
         const r = await fetch('/api/status');
         const data = await r.json();
         const isRunning = data.running;
-        mainStatusEl.className = 'status-indicator ' + (isRunning ? 'scanning' : 'online');
-        mainStatusText.textContent = isRunning ? 'Executando comando...' : 'Proxmark Livre';
+        const isConnected = !!data.pm3_connected;
+        if (isRunning) {
+          mainStatusEl.className = 'status-indicator scanning';
+          mainStatusText.textContent = isConnected ? 'Executando comando...' : 'Executando (sem PM3)';
+        } else if (isConnected) {
+          mainStatusEl.className = 'status-indicator online';
+          mainStatusText.textContent = 'Proxmark Conectado';
+        } else {
+          mainStatusEl.className = 'status-indicator';
+          mainStatusText.textContent = 'Proxmark Desconectado';
+        }
         return isRunning;
       } catch (e) {
         mainStatusEl.className = 'status-indicator';
-        mainStatusText.textContent = 'Desconectado';
+        mainStatusText.textContent = 'Servidor indisponível';
         return false;
       }
     }
@@ -440,7 +450,21 @@
       }
     };
 
-    window.clonarTag = function(uid, freq) {
+    function extractUidFromLines(lines) {
+      const text = (lines || []).join('\n');
+      const patterns = [
+        /\bEM\s*410x?\s*ID[:\s-]*([0-9A-F]{8,})/i,
+        /\bID[:\s-]*([0-9A-F]{8,})/i,
+        /\bUID[:\s-]*([0-9A-F ]{8,})/i,
+      ];
+      for (const p of patterns) {
+        const m = text.match(p);
+        if (m && m[1]) return m[1].replace(/\s/g, '').toUpperCase();
+      }
+      return '';
+    }
+
+    window.clonarTag = async function(uid, freq) {
       if (!uid || uid === 'N/A') return alert("Não é possível clonar: UID desconhecido.");
       
       // Mudar para tab config para ver o log
@@ -456,7 +480,30 @@
       }
       
       cmdEl.value = cmd;
-      startSilentAndFilter(cmd);
+      await startSilentAndFilter(cmd);
+
+      // Sempre valida escrita após clonagem LF para evitar falso positivo.
+      if (freq.toLowerCase().includes('lf')) {
+        const expected = uid.replace(/\s/g, '').toUpperCase();
+        const verifyCmd = buildPm3Cmd('lf em 410x reader');
+        addLog('\n--- Verificando tag clonada (LF) ---');
+        await startSilentAndFilter(verifyCmd);
+
+        try {
+          const verifyResp = await fetch('/api/last-run');
+          const verifyData = await verifyResp.json();
+          const found = extractUidFromLines(verifyData.lines || []);
+          if (!found) {
+            addLog('⚠️ Não foi possível ler UID após clonagem. Reaproxime a tag e tente novamente.');
+          } else if (found !== expected) {
+            addLog(`❌ UID divergente após clonagem. Esperado: ${expected} | Lido: ${found}`);
+          } else {
+            addLog(`✅ Verificação concluída: UID gravado corretamente (${found}).`);
+          }
+        } catch (e) {
+          addLog('⚠️ Falha ao validar o UID após clonagem.');
+        }
+      }
     };
 
     window.editarNome = async (id) => {

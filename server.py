@@ -13,6 +13,7 @@ import psycopg2
 
 ROOT = Path(__file__).resolve().parent
 PUBLIC_DIR = ROOT / "public"
+PM3_HELPER = ROOT / "proxmark3" / "pm3"
 HOST = "127.0.0.1"
 PORT = 8787
 
@@ -193,6 +194,14 @@ class TagStore:
                             ('Verificar clone', 'lf em 410x read', 'Lê e mostra o ID da tag no leitor');
                             """
                         )
+                    # Corrige comando legado para leitura contínua mais confiável.
+                    cur.execute(
+                        """
+                        UPDATE comandos_uteis
+                        SET comando = 'lf em 410x reader'
+                        WHERE nome = 'Verificar clone' AND comando = 'lf em 410x read';
+                        """
+                    )
             self._setup_done = True
 
     def save_read(self, frequency, uid, source_command, raw_output):
@@ -308,12 +317,37 @@ manager = CommandManager()
 store = TagStore()
 
 
+def detect_pm3_connected():
+    if not PM3_HELPER.exists():
+        return False
+    try:
+        proc = subprocess.run(
+            [str(PM3_HELPER), "--list"],
+            cwd=str(ROOT / "proxmark3"),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            timeout=2.0,
+        )
+        output = (proc.stdout or "").strip()
+        if proc.returncode != 0:
+            return False
+        return bool(re.search(r"^\d+:\s+/dev/", output, flags=re.MULTILINE))
+    except Exception:
+        return False
+
+
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         parsed = urlparse(self.path)
 
         if parsed.path == "/api/status":
-            return self._json({"running": manager.is_running()})
+            return self._json(
+                {
+                    "running": manager.is_running(),
+                    "pm3_connected": detect_pm3_connected(),
+                }
+            )
 
         if parsed.path == "/api/logs":
             return self._json({"lines": manager.snapshot_logs()})
