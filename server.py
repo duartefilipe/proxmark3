@@ -5,11 +5,17 @@ import queue
 import re
 import subprocess
 import threading
+import sys
+import shutil
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 import psycopg2
+
+# Installation Tracking
+install_status = {"status": "idle", "message": ""}
+install_thread = None
 
 ROOT = Path(__file__).resolve().parent
 PUBLIC_DIR = ROOT / "public"
@@ -134,7 +140,7 @@ class TagStore:
     def __init__(self):
         self.cfg = {
             "host": os.getenv("PM3_PGHOST", "192.168.31.229"),
-            "port": int(os.getenv("PM3_PGPORT", "5433")),
+            "port": int(os.getenv("PM3_PGPORT", "15432")),
             "dbname": os.getenv("PM3_PGDATABASE", "proxmark"),
             "user": os.getenv("PM3_PGUSER", "proxmark"),
             "password": os.getenv("PM3_PGPASSWORD", "troque_essa_senha_forte"),
@@ -317,22 +323,29 @@ manager = CommandManager()
 store = TagStore()
 
 
+def get_pm3_helper():
+    import shutil
+    local_pm3_bat = ROOT / "pm3.bat"
+    if local_pm3_bat.exists(): return str(local_pm3_bat)
+    which_pm3 = shutil.which("pm3")
+    if which_pm3: return which_pm3
+    return str(local_pm3_bat)
+
 def detect_pm3_connected():
-    if not PM3_HELPER.exists():
-        return False
+    helper = get_pm3_helper()
     try:
         proc = subprocess.run(
-            [str(PM3_HELPER), "--list"],
-            cwd=str(ROOT / "proxmark3"),
+            [helper, "--list"],
+            cwd=str(ROOT),
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True,
-            timeout=2.0,
+            timeout=5.0,
         )
         output = (proc.stdout or "").strip()
         if proc.returncode != 0:
             return False
-        return bool(re.search(r"^\d+:\s+/dev/", output, flags=re.MULTILINE))
+        return bool(re.search(r"^\d+:\s+(?:/dev/|COM\d+)", output, flags=re.MULTILINE))
     except Exception:
         return False
 
@@ -342,12 +355,25 @@ class Handler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
 
         if parsed.path == "/api/status":
+            pm3_exists = False
+            pm3_path = get_pm3_helper()
+            if pm3_path and Path(pm3_path).exists():
+                pm3_exists = True
+            elif shutil.which("pm3"):
+                pm3_exists = True
+
+            pm3_connected = detect_pm3_connected()
             return self._json(
                 {
                     "running": manager.is_running(),
-                    "pm3_connected": detect_pm3_connected(),
+                    "pm3_connected": pm3_connected,
+                    "pm3_exists": pm3_exists,
+                    "install_status": install_status,
                 }
             )
+
+        if parsed.path == "/api/install_status":
+            return self._json(install_status)
 
         if parsed.path == "/api/logs":
             return self._json({"lines": manager.snapshot_logs()})
@@ -385,6 +411,7 @@ class Handler(BaseHTTPRequestHandler):
 
         if parsed.path == "/api/start":
             command = body.get("command", [""])[0].strip()
+            command = command.replace("/Users/anakin/Documents/Anakin/ProxmarkWebConsole/proxmark3/pm3", "pm3")
             silent = body.get("silent", ["false"])[0].lower() == "true"
             if not command:
                 return self._json({"error": "command vazio"}, status=400)
@@ -435,6 +462,43 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"ok": True})
             except Exception as e:
                 return self._json({"error": str(e)}, status=500)
+
+        if parsed.path == "/api/install_trigger":
+            global install_thread
+            if install_thread is not None and install_thread.is_alive():
+                return self._json({"ok": False, "error": "Instalação já em andamento"}, status=409)
+                
+            def run_install():
+                global install_status
+                try:
+                    install_status["status"] = "running"
+                    install_status["message"] = "Iniciando script de instalação..."
+                    
+                    # Install py7zr if needed
+                    try:
+                        import py7zr
+                    except ImportError:
+                        install_status["message"] = "Instalando dependência (py7zr) via pip..."
+                        subprocess.check_call([sys.executable, "-m", "pip", "install", "py7zr"])
+                    
+                    import install_pm3
+                    install_status["message"] = "Baixando ProxSpace (pode demorar)..."
+                    success = install_pm3.download_and_extract_proxspace()
+                    
+                    if success:
+                        install_status["status"] = "done"
+                        install_status["message"] = "Concluído com sucesso!"
+                    else:
+                        install_status["status"] = "error"
+                        install_status["message"] = "Falha durante a instalação."
+                except Exception as e:
+                    install_status["status"] = "error"
+                    install_status["message"] = str(e)
+            
+            import threading
+            install_thread = threading.Thread(target=run_install)
+            install_thread.start()
+            return self._json({"ok": True, "message": "Instalação iniciada em background."})
 
         return self._json({"error": "rota nao encontrada"}, status=404)
 

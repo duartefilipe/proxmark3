@@ -244,6 +244,17 @@
       <button class="tab-btn" data-tab="config">Conexão & Terminal</button>
     </div>
 
+    <!-- INSTALL BANNER -->
+    <div id="installBanner" style="display: none; background: var(--card-bg); padding: 1rem; border-radius: 8px; border: 1px solid var(--accent); margin-bottom: 1rem; align-items: center; justify-content: space-between;">
+      <div>
+        <h3 style="margin-top:0; margin-bottom:0.5rem; color: var(--accent);">⚠️ Cliente Proxmark3 Não Encontrado</h3>
+        <p style="margin: 0; color: var(--text-muted); font-size: 0.9rem;" id="installBannerText">
+          Para utilizar o servidor no Windows, você precisa do ambiente ProxSpace instalado.
+        </p>
+      </div>
+      <button id="installBtn" class="btn-primary" onclick="triggerInstall()" style="white-space: nowrap; margin-left: 1rem;">Instalar ProxSpace</button>
+    </div>
+
     <!-- TAB: AUTO-SCAN -->
     <div id="auto-scan" class="tab-content active">
       <div class="card radar-container">
@@ -351,7 +362,7 @@
     const tagsBodyEl = document.getElementById('tagsBody');
     const cmdEl = document.getElementById('command');
     const portaEl = document.getElementById('porta');
-    const pm3Bin = '/Users/anakin/Documents/Anakin/ProxmarkWebConsole/proxmark3/pm3';
+    const pm3Bin = 'pm3';
 
     // TAB LOGIC
     document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -381,12 +392,41 @@
         const data = await r.json();
         const isRunning = data.running;
         const isConnected = !!data.pm3_connected;
+        const pm3Exists = !!data.pm3_exists;
+        const instStatus = data.install_status || {};
+        
+        const banner = document.getElementById('installBanner');
+        const bannerText = document.getElementById('installBannerText');
+        const installBtn = document.getElementById('installBtn');
+
+        if (!pm3Exists && instStatus.status !== 'done') {
+            banner.style.display = 'flex';
+            if (instStatus.status === 'running') {
+                bannerText.textContent = instStatus.message;
+                installBtn.disabled = true;
+                installBtn.textContent = 'Instalando...';
+            } else if (instStatus.status === 'error') {
+                bannerText.textContent = `Erro: ${instStatus.message}`;
+                installBtn.disabled = false;
+                installBtn.textContent = 'Tentar Novamente';
+            } else {
+                bannerText.textContent = 'Para utilizar o servidor no Windows, você precisa do ambiente ProxSpace instalado.';
+                installBtn.disabled = false;
+                installBtn.textContent = 'Instalar ProxSpace';
+            }
+        } else {
+            banner.style.display = 'none';
+        }
+
         if (isRunning) {
           mainStatusEl.className = 'status-indicator scanning';
           mainStatusText.textContent = isConnected ? 'Executando comando...' : 'Executando (sem PM3)';
         } else if (isConnected) {
           mainStatusEl.className = 'status-indicator online';
           mainStatusText.textContent = 'Proxmark Conectado';
+        } else if (!pm3Exists) {
+          mainStatusEl.className = 'status-indicator';
+          mainStatusText.textContent = 'Cliente Ausente';
         } else {
           mainStatusEl.className = 'status-indicator';
           mainStatusText.textContent = 'Proxmark Desconectado';
@@ -745,12 +785,25 @@
       };
     });
 
+    async function triggerInstall() {
+      if(!confirm("Isso iniciará o download e a extração do ProxSpace (~750MB). Deseja continuar?")) return;
+      try {
+        const r = await fetch('/api/install_trigger', { method: 'POST' });
+        const data = await r.json();
+        if(!data.ok) alert(data.error);
+        refreshStatus();
+      } catch(e) {
+        alert("Erro ao iniciar instalação.");
+      }
+    }
+
     // SSE PARA STREAM DE LOGS
     const events = new EventSource('/api/stream');
     events.onmessage = (ev) => addLog(ev.data);
 
     // INIT
     Promise.all([loadLogs(), refreshTags(), refreshComandosUteis()]).then(() => {
+      refreshStatus();
       setInterval(refreshStatus, 2000);
     });
 
