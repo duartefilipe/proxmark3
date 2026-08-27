@@ -69,6 +69,9 @@ cria o symlink estavel `/dev/proxmark3`.
    - `PM3_PGPASSWORD` - senha do usuario `proxmark` no Postgres
 6. `Deploy the stack`
 
+O repositorio ja contem um `stack.env` com os demais valores padrao, entao
+apenas a senha precisa ser informada na tela.
+
 Para atualizar depois: `git push` e clique em `Pull and redeploy` no Portainer.
 
 Painel disponivel em `http://192.168.31.229:8787`.
