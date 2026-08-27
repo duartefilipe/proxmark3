@@ -43,6 +43,48 @@ Validacao executada com sucesso:
 - `hw version`
 - `hw status`
 
+## Deploy no Portainer (servidor 192.168.31.229)
+
+### Pre-requisito no Proxmox (ja configurado)
+
+O Portainer roda no LXC 108 do Proxmox `192.168.31.3`. O Proxmark3 esta
+conectado na USB do host, entao o device precisa ser repassado ao container:
+
+```bash
+# no host Proxmox
+pct set 108 -dev0 /dev/ttyACM0,gid=20,mode=0660
+pct reboot 108
+```
+
+Tambem existe uma regra udev em `/etc/udev/rules.d/90-proxmark3.rules` que
+cria o symlink estavel `/dev/proxmark3`.
+
+### Stack no Portainer (metodo recomendado: Repository)
+
+1. `Stacks` -> `Add stack` -> aba `Repository`
+2. Repository URL: `https://github.com/duartefilipe/proxmark3`
+3. Reference: `refs/heads/main`
+4. Compose path: `docker-compose.yml`
+5. Em `Environment variables`, defina no minimo:
+   - `PM3_PGPASSWORD` - senha do usuario `proxmark` no Postgres
+6. `Deploy the stack`
+
+Para atualizar depois: `git push` e clique em `Pull and redeploy` no Portainer.
+
+Painel disponivel em `http://192.168.31.229:8787`.
+
+### Variaveis suportadas
+
+| Variavel | Padrao | Descricao |
+| --- | --- | --- |
+| `PM3_PGPASSWORD` | (obrigatoria) | Senha do Postgres |
+| `PM3_PGHOST` | `192.168.31.229` | Host do Postgres |
+| `PM3_PGPORT` | `15432` | Porta do Postgres |
+| `PM3_PGDATABASE` | `proxmark` | Banco |
+| `PM3_PGUSER` | `proxmark` | Usuario |
+| `PM3_WEB_PORT` | `8787` | Porta do painel |
+| `PM3_DEVICE` | `/dev/ttyACM0` | Device do Proxmark no host |
+
 ## PostgreSQL para historico de leituras
 
 Use a stack pronta no Portainer:
