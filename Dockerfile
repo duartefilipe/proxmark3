@@ -18,9 +18,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /src
 RUN git clone --depth 1 --branch "${PM3_REF}" "${PM3_REPO}" .
 
-# Cliente apenas (sem Qt, Bluetooth, Python e GD) para reduzir dependencias
+# Cliente apenas (sem Qt, Bluetooth, Python e GD) para reduzir dependencias.
+# Nao usamos "make install" pois ele tenta instalar o firmware (bootrom/armsrc),
+# que exigiria o toolchain arm-none-eabi.
 RUN make client -j"$(nproc)" SKIPQT=1 SKIPBT=1 SKIPPYTHON=1 SKIPGD=1 \
-    && make install PREFIX=/usr/local DESTDIR=/out \
+    && make client/install PREFIX=/usr/local DESTDIR=/out \
         SKIPQT=1 SKIPBT=1 SKIPPYTHON=1 SKIPGD=1
 
 
