@@ -51,10 +51,13 @@ COPY --from=builder /out/usr/local /usr/local
 WORKDIR /app
 COPY server.py ./
 COPY public/ ./public/
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 ENV PM3_HOST=0.0.0.0 \
     PM3_PORT=8787
 
 EXPOSE 8787
 
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["python3", "server.py"]

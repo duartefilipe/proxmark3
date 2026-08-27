@@ -21,3 +21,7 @@ services:
     # Requer que /dev/ttyACM0 exista no host que executa o Docker.
     devices:
       - "${PM3_DEVICE:-/dev/ttyACM0}:/dev/ttyACM0"
+    # MKNOD permite ao entrypoint criar /dev/tty0, usado pelo wrapper pm3
+    # apenas como sentinela de permissao.
+    cap_add:
+      - MKNOD
