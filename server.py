@@ -20,8 +20,8 @@ install_thread = None
 ROOT = Path(__file__).resolve().parent
 PUBLIC_DIR = ROOT / "public"
 PM3_HELPER = ROOT / "proxmark3" / "pm3"
-HOST = "127.0.0.1"
-PORT = 8787
+HOST = os.getenv("PM3_HOST", "127.0.0.1")
+PORT = int(os.getenv("PM3_PORT", "8787"))
 
 
 class CommandManager:
@@ -325,11 +325,16 @@ store = TagStore()
 
 def get_pm3_helper():
     import shutil
-    local_pm3_bat = ROOT / "pm3.bat"
-    if local_pm3_bat.exists(): return str(local_pm3_bat)
+    # No Linux/container o pm3 fica no PATH (/usr/local/bin/pm3)
     which_pm3 = shutil.which("pm3")
-    if which_pm3: return which_pm3
-    return str(local_pm3_bat)
+    if which_pm3:
+        return which_pm3
+    if os.name == "nt":
+        local_pm3_bat = ROOT / "pm3.bat"
+        if local_pm3_bat.exists():
+            return str(local_pm3_bat)
+        return str(local_pm3_bat)
+    return "pm3"
 
 def detect_pm3_connected():
     helper = get_pm3_helper()

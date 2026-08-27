@@ -1,0 +1,23 @@
+services:
+  proxmark-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: proxmark-web
+    restart: unless-stopped
+    environment:
+      TZ: America/Sao_Paulo
+      PM3_HOST: 0.0.0.0
+      PM3_PORT: 8787
+      # Aponta para o Postgres ja existente no servidor (container postgres-anakin)
+      PM3_PGHOST: ${PM3_PGHOST:-192.168.31.229}
+      PM3_PGPORT: ${PM3_PGPORT:-15432}
+      PM3_PGDATABASE: ${PM3_PGDATABASE:-proxmark}
+      PM3_PGUSER: ${PM3_PGUSER:-proxmark}
+      PM3_PGPASSWORD: ${PM3_PGPASSWORD:?defina PM3_PGPASSWORD}
+    ports:
+      - "${PM3_WEB_PORT:-8787}:8787"
+    # Acesso ao Proxmark3 conectado na USB do host.
+    # Requer que /dev/ttyACM0 exista no host que executa o Docker.
+    devices:
+      - "${PM3_DEVICE:-/dev/ttyACM0}:/dev/ttyACM0"

@@ -1,0 +1,11 @@
+.git
+.gitignore
+proxmark3/
+toolchains/
+ProxSpace/
+__pycache__/
+*.pyc
+.env
+pm3.bat
+README.md
+portainer-stack-postgres.yml
