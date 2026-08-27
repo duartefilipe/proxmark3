@@ -13,19 +13,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libssl-dev \
         libbz2-dev \
         liblz4-dev \
+        gcc-arm-none-eabi \
+        libnewlib-arm-none-eabi \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /src
 RUN git clone --depth 1 --branch "${PM3_REF}" "${PM3_REPO}" .
 
-# Cliente apenas (sem Qt, Bluetooth, Python e GD) para reduzir dependencias.
-# Nao usamos "make install" pois ele tenta instalar o firmware (bootrom/armsrc),
-# que exigiria o toolchain arm-none-eabi.
+# Cliente (sem Qt, Bluetooth, Python e GD) para reduzir dependencias.
 # client/install  -> binario proxmark3 + resources
-# common/install  -> scripts de apoio, incluindo o wrapper "pm3"
+# common/install  -> scripts de apoio, incluindo os wrappers "pm3" e "pm3-flash-all"
 RUN make client -j"$(nproc)" SKIPQT=1 SKIPBT=1 SKIPPYTHON=1 SKIPGD=1 \
     && make client/install common/install PREFIX=/usr/local DESTDIR=/out \
         SKIPQT=1 SKIPBT=1 SKIPPYTHON=1 SKIPGD=1
+
+# Firmware da MESMA versao do cliente, para permitir reflash pelo painel.
+# O toolchain ARM fica apenas neste stage; a imagem final so recebe os .elf.
+RUN make bootrom fullimage -j"$(nproc)" \
+    && mkdir -p /out/firmware \
+    && cp bootrom/obj/bootrom.elf /out/firmware/ \
+    && cp armsrc/obj/fullimage.elf /out/firmware/
 
 
 # ---------- Stage 2: imagem final com o painel web ----------
@@ -47,12 +54,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 # Cliente pm3 compilado no stage anterior
 COPY --from=builder /out/usr/local /usr/local
+# Firmware da mesma versao do cliente (para reflash via pm3-flash-all)
+COPY --from=builder /out/firmware /usr/local/share/proxmark3/firmware
 
 WORKDIR /app
 COPY server.py ./
 COPY public/ ./public/
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+COPY pm3-reflash.sh /usr/local/bin/pm3-reflash
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh /usr/local/bin/pm3-reflash
 
 # O wrapper "pm3" usa /dev/tty0 apenas como sentinela para decidir se tem
 # privilegio de ler /dev/ttyXXX. Esse node nao existe em container (e nao pode

@@ -24,6 +24,11 @@ services:
     # Requer que /dev/ttyACM0 exista no host que executa o Docker.
     devices:
       - "${PM3_DEVICE:-/dev/ttyACM0}:/dev/ttyACM0"
+    # Durante o reflash o aparelho reenumera no modo bootloader e o device
+    # node pode ser recriado. A regra abaixo permite ao container continuar
+    # enxergando o novo node sem precisar recriar a stack.
+    device_cgroup_rules:
+      - "c 166:* rmw"
     healthcheck:
       test:
         - CMD-SHELL
