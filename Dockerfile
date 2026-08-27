@@ -54,6 +54,14 @@ COPY public/ ./public/
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
+# O wrapper "pm3" usa /dev/tty0 apenas como sentinela para decidir se tem
+# privilegio de ler /dev/ttyXXX. Esse node nao existe em container (e nao pode
+# ser criado em LXC unprivileged, onde mknod e bloqueado), fazendo o script
+# abortar mesmo com o Proxmark acessivel. Trocamos a sentinela pelo proprio
+# device do Proxmark, que e o que realmente precisa estar legivel.
+RUN sed -i 's#\[ ! -c "/dev/tty0" \]#[ ! -c "${PM3_TTY:-/dev/ttyACM0}" ]#' /usr/local/bin/pm3 \
+    && grep -q 'PM3_TTY' /usr/local/bin/pm3
+
 ENV PM3_HOST=0.0.0.0 \
     PM3_PORT=8787
 

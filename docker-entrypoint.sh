@@ -1,13 +1,16 @@
 #!/bin/sh
 set -e
 
-# O wrapper "pm3" usa /dev/tty0 apenas como sentinela para checar se o processo
-# tem privilegio de ler /dev/ttyXXX. Em container (e em LXC) esse node nao
-# existe, o que faz o script abortar com "insufficient privileges".
-# Criamos o node localmente quando possivel; se falhar, seguimos assim mesmo.
-if [ ! -c /dev/tty0 ]; then
-    mknod /dev/tty0 c 4 0 2>/dev/null || true
-    chmod 600 /dev/tty0 2>/dev/null || true
+# Device serial do Proxmark3 dentro do container.
+# Tambem e usado como sentinela pelo wrapper pm3 (ver patch no Dockerfile).
+PM3_TTY="${PM3_TTY:-/dev/ttyACM0}"
+export PM3_TTY
+
+if [ ! -c "$PM3_TTY" ]; then
+    echo "[aviso] device $PM3_TTY nao encontrado no container." >&2
+    echo "[aviso] confira o passthrough USB do host ate o Docker." >&2
+elif [ ! -r "$PM3_TTY" ] || [ ! -w "$PM3_TTY" ]; then
+    echo "[aviso] sem permissao de leitura/escrita em $PM3_TTY." >&2
 fi
 
 exec "$@"

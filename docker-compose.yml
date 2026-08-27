@@ -9,6 +9,7 @@ services:
       TZ: America/Sao_Paulo
       PM3_HOST: 0.0.0.0
       PM3_PORT: 8787
+      PM3_TTY: /dev/ttyACM0
       # Aponta para o Postgres ja existente no servidor (container postgres-anakin)
       PM3_PGHOST: ${PM3_PGHOST:-192.168.31.229}
       PM3_PGPORT: ${PM3_PGPORT:-15432}
@@ -21,7 +22,3 @@ services:
     # Requer que /dev/ttyACM0 exista no host que executa o Docker.
     devices:
       - "${PM3_DEVICE:-/dev/ttyACM0}:/dev/ttyACM0"
-    # MKNOD permite ao entrypoint criar /dev/tty0, usado pelo wrapper pm3
-    # apenas como sentinela de permissao.
-    cap_add:
-      - MKNOD
