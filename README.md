@@ -76,6 +76,23 @@ Para atualizar depois: `git push` e clique em `Pull and redeploy` no Portainer.
 
 Painel disponivel em `http://192.168.31.229:8787`.
 
+### Reflash do firmware
+
+Se o painel mostrar:
+
+```
+Capabilities structure version sent by Proxmark3 is not the same as the one used by the client!
+```
+
+significa que o firmware gravado no aparelho e mais antigo que o cliente.
+A imagem ja embarca o firmware da mesma versao do cliente, entao basta rodar:
+
+```bash
+docker exec -it proxmark-web pm3-reflash
+```
+
+O aparelho reinicia sozinho ao final. Nao desconecte durante o processo.
+
 ### Variaveis suportadas
 
 | Variavel | Padrao | Descricao |
